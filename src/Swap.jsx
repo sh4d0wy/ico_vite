@@ -161,14 +161,15 @@ function Swap() {
   const init = async () => {
     console.log("Entered init");
     try {
-      if (!isConnected || !walletClient) return;
+      if (!isConnected ) return;
       
       // Get BNB balance
       const balance = await publicClient.getBalance({ address });
       setBNBBalance(balance);
-
+      const connectedWallet = wallets.find(w => w.address?.toLowerCase() === address?.toLowerCase());
       // Create ethers provider from wagmi
-      const provider = new ethers.BrowserProvider(walletClient);
+      const privyProvider = await connectedWallet.getEthereumProvider();
+      const provider = new ethers.BrowserProvider(privyProvider);
       const signer = await provider.getSigner();
       
       const contract = new Contract(presaleAddress, presaleAbi, signer);
