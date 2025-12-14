@@ -64,7 +64,7 @@ const queryClient = new QueryClient()
 
 // 1. Get projectId from https://dashboard.reown.com
 // const projectId = 'df16c2630664f97516d9b5cb166ca422'
-const projectId = '68852e275860458fdc58676ba43e37e7'
+const projectId = 'b0b1d317d0727e18ab951cb9dfa21e5d'
 // 2. Create a metadata object - optional
 const metadata = {
   name: 'PAX Presale',
