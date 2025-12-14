@@ -832,7 +832,7 @@ function Swap() {
               <div className="w-[95%] mt-2 mb-2 flex justify-center">
                       {/* <ConnectButton /> */}
                       {/* <ConnectButton/> */}
-                      <AppKitButton balance="hide" />
+                      <appkit-button />
               </div>
               <div className="w-full 3xl:max-w-[450px] md:translate-x-2 max-w-[400px] mt-1 lg:px-0 px-3">
                 <div className="flex flex-col">
