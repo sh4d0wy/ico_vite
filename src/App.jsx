@@ -69,7 +69,7 @@ const projectId = 'b0b1d317d0727e18ab951cb9dfa21e5d'
 const metadata = {
   name: 'PAX Presale',
   description: 'PAX Presale',
-  url: window.location.origin, // origin must match your domain & subdomain
+  url:"https://ico-vite.netlify.app", // origin must match your domain & subdomain
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 }
 
