@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --font-mono: ui-monospace, sans-serif;
+
+  --color-black1: #0f111d;
+  --color-black2: #010314;
+
+  --text-6xl: 41px;
+  --text-7xl: 51px;
+  --text-26px: 26px;
+  --text-28: 28px;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
