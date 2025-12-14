@@ -30,9 +30,7 @@ import {
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { ConnectButton } from "./ConnectButton";
-import { watchAsset } from '@wagmi/core';
-import { config } from './App';
-import { useConnectorClient } from "wagmi";
+import { useWallets } from "@privy-io/react-auth";
 
 // import { ConnectButton } from "@rainbow-me/rainbowkit";
 // import { AppKitButton, AppKitConnectButton } from "@reown/appkit/react";
@@ -90,7 +88,9 @@ function Swap() {
 
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [soldPercent, setSoldPercentage] = useState(0);
-  const { data:connectorClient } = useConnectorClient();
+  
+  // Privy wallet hook - this gives us access to the actual wallet provider
+  const { wallets } = useWallets();
 
   const syncPresaleDetails = async (_presaleContract) => {
     try {
@@ -545,65 +545,97 @@ function Swap() {
   //   }
   // };
 
+  const showManualImportDialog = () => {
+    Swal.fire({
+      title: t("manual_import_required") || "Add Token Manually",
+      html: `
+        <div style="text-align: left; font-size: 14px;">
+          <p style="margin-bottom: 10px;">Copy the token address and add it in your wallet:</p>
+          <div style="margin: 10px 0;">
+            <p style="margin: 5px 0; font-weight: bold;">Contract Address:</p>
+            <p style="word-break: break-all; background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 5px 0; font-family: monospace;">${tokenAddress}</p>
+          </div>
+          <p style="margin: 5px 0;"><strong>Symbol:</strong> ${token.symbol}</p>
+          <p style="margin: 5px 0;"><strong>Decimals:</strong> ${token.decimals}</p>
+        </div>
+      `,
+      icon: "info",
+      confirmButtonText: "Copy Address",
+      showCancelButton: true,
+      cancelButtonText: "Close"
+    }).then((result) => {
+      if (result.isConfirmed) {
+        copyToClipboard(tokenAddress);
+        toast.success(t("copied"));
+      }
+    });
+  };
+
   const handleWatchAsset = async () => {
-    if (!connectorClient) {
-      toast.error("Please connect your wallet first");
+    if (!isConnected) {
+      Swal.fire(t("warning"), t("connect_wallet_first"), "warning");
       return;
     }
+    
+    // Get the connected wallet from Privy
+    const connectedWallet = wallets.find(w => w.address?.toLowerCase() === address?.toLowerCase());
+    console.log("Privy wallets:", wallets, "Connected wallet:", connectedWallet, "address:", address);
+    
+    if (!connectedWallet) {
+      console.log("No connected wallet found in Privy wallets, showing manual import");
+      showManualImportDialog();
+      return;
+    }
+    
     try {
-      const provider = await connectorClient.request({
-        method: "wallet_watchAsset",
-        params: {
-          type: "ERC20",
-          options: {
-            address: tokenAddress,
-            symbol: token.symbol,
-            decimals: token.decimals,
-            image: token.image,
-          },
-        },
-      });
+      // Get the provider from the Privy wallet
+      const provider = await connectedWallet.getEthereumProvider();
       
-      if (provider) {
-        Swal.fire(t("token_imported"), "", "success");
-      } else {
-        Swal.fire(t("token_already_in_wallet") || "Token already in wallet", "", "info");
+      if (!provider) {
+        console.log("Could not get provider from wallet, showing manual import");
+        showManualImportDialog();
+        return;
+      }
+      
+      // Now add the token
+      try {
+        const result = await provider.request({
+          method: "wallet_watchAsset",
+          params: {
+            type: "ERC20",
+            options: {
+              address: tokenAddress,
+              symbol: token.symbol,
+              decimals: token.decimals,
+              image: token.image,
+            },
+          },
+        });
+        
+        if (result) {
+          Swal.fire(t("token_imported") || "Token added successfully!", "", "success");
+        }
+        // If result is false, user cancelled - don't show anything
+      } catch (watchError) {
+        console.log("watchAsset error:", watchError);
+        const errorMessage = (watchError?.message || watchError?.toString() || "").toLowerCase();
+        
+        // Handle timeout and "request in progress" errors - show manual import
+        if (errorMessage.includes("timeout") || errorMessage.includes("in progress")) {
+          console.log("Wallet request timeout or in progress, showing manual import");
+          showManualImportDialog();
+        } else if (errorMessage.includes("already") || errorMessage.includes("exist")) {
+          Swal.fire(t("token_already_in_wallet") || "Token already in wallet", "", "info");
+        } else if (errorMessage.includes("user rejected") || errorMessage.includes("user denied") || errorMessage.includes("cancelled")) {
+          // User cancelled - do nothing
+          return;
+        } else {
+          showManualImportDialog();
+        }
       }
     } catch (error) {
-      console.log("watchAsset error:", error);
-      const errorMessage = error?.message?.toLowerCase() || "";
-      
-      if (errorMessage.includes("already") || errorMessage.includes("exist") || errorMessage.includes("added")) {
-        Swal.fire(t("token_already_in_wallet") || "Token already in wallet", "", "info");
-      } else if (errorMessage.includes("user rejected") || errorMessage.includes("user denied")) {
-        // User cancelled - do nothing
-        return;
-      } else {
-        // Show manual import as fallback
-        Swal.fire({
-          title: t("manual_import_required") || "Add Token Manually",
-          html: `
-            <div style="text-align: left; font-size: 14px;">
-              <p style="margin-bottom: 10px;">Copy the token address and add it in your wallet:</p>
-              <div style="margin: 10px 0;">
-                <p style="margin: 5px 0; font-weight: bold;">Contract Address:</p>
-                <p style="word-break: break-all; background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 5px 0; font-family: monospace;">${tokenAddress}</p>
-              </div>
-              <p style="margin: 5px 0;"><strong>Symbol:</strong> ${token.symbol}</p>
-              <p style="margin: 5px 0;"><strong>Decimals:</strong> ${token.decimals}</p>
-            </div>
-          `,
-          icon: "info",
-          confirmButtonText: "Copy Address",
-          showCancelButton: true,
-          cancelButtonText: "Close"
-        }).then((result) => {
-          if (result.isConfirmed) {
-            copyToClipboard(tokenAddress);
-            toast.success(t("copied"));
-          }
-        });
-      }
+      console.log("handleWatchAsset error:", error);
+      showManualImportDialog();
     }
   }
 
