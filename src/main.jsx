@@ -7,13 +7,12 @@ import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n.js";
 // import "bootstrap/dist/css/bootstrap.css";
 import { ToastContainer } from "react-toastify";
-
-// import {PrivyProvider} from '@privy-io/react-auth';
+import {PrivyProvider} from '@privy-io/react-auth';
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-      {/* <PrivyProvider
+      <PrivyProvider
         appId="cmiucbnja0368l80cyits6xs2"
         config={{
           loginMethods: ['wallet'],
@@ -23,12 +22,12 @@ root.render(
             }
           }
         }}
-      > */}
+      >
     <I18nextProvider i18n={i18n}>
       <App />
       <ToastContainer />
     </I18nextProvider>
-    {/* </PrivyProvider> */}
+    </PrivyProvider>
   </React.StrictMode>
 );
 

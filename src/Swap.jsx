@@ -1,6 +1,6 @@
 /** @format */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 // import Big from "big.js";
 import Swal from "sweetalert2";
 import "./Swap.css";
@@ -29,9 +29,13 @@ import {
 } from "./utils/utils.js";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
-// import { ConnectButton } from "./ConnectButton";
+import { ConnectButton } from "./ConnectButton";
+import { watchAsset } from '@wagmi/core';
+import { config } from './App';
+import { useConnectorClient } from "wagmi";
+
 // import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { AppKitButton, AppKitConnectButton } from "@reown/appkit/react";
+// import { AppKitButton, AppKitConnectButton } from "@reown/appkit/react";
 function Swap() {
   const { t } = useTranslation();
   
@@ -41,6 +45,7 @@ function Swap() {
   const publicClient = usePublicClient();
   
   const [presaleContract, setPresaleContract] = useState(null);
+  const [readOnlyPresaleContract, setReadOnlyPresaleContract] = useState(null);
   const [tokenContract, setTokenContract] = useState(null);
   const [saleTokenContract, setSaleTokenContract] = useState(null);
 
@@ -75,9 +80,7 @@ function Swap() {
   const [amountBnbPay, setAmountBnbPay] = useState(1);
   const [amountTokenReceivedBnb, setAmountTokenReceivedBnb] = useState(0);
   const [amountTokenReceivedUsdt, setAmountTokenReceivedUsdt] = useState(0);
-  let timerIntervalId = 0;
-  const timerRef = useRef();
-
+  
   const [timerData, setTimerData] = useState({
     days: 0,
     hours: 0,
@@ -87,6 +90,7 @@ function Swap() {
 
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [soldPercent, setSoldPercentage] = useState(0);
+  const { data:connectorClient } = useConnectorClient();
 
   const syncPresaleDetails = async (_presaleContract) => {
     try {
@@ -131,6 +135,7 @@ function Swap() {
               parseFloat(totalTokensSold) / parseFloat(totalTokenInPresale)
             ).toFixed(4) * 100;
       setSoldPercentage(soldPrecentage);
+      console.log("Exited syncPresaleDetails");
     } catch (error) {
       console.log(error);
     }
@@ -138,13 +143,16 @@ function Swap() {
 
   const getInitialValues = async () => {
     try {
+      console.log("Entered getInitialValues");
       const network = new ethers.Network(chain.currency, chain.chainId);
       let provider = new ethers.JsonRpcProvider(rpcUrl, network, {
         staticNetwork: true,
         batchMaxCount: 1,
       });
       let _presaleContract = new Contract(presaleAddress, presaleAbi, provider);
-      syncPresaleDetails(_presaleContract);
+      setReadOnlyPresaleContract(_presaleContract);
+      await syncPresaleDetails(_presaleContract);
+      console.log("Exited getInitialValues"); 
     } catch (error) {
       console.log(error);
     }
@@ -219,14 +227,18 @@ function Swap() {
     let startTime = startDate.getTime();
     let endTime = endDate.getTime();
 
-    if (deci(totalTokensSold).gte(tokensInPresale)) {
-      return presaleStates.EXPIRED;
+    // Don't check sold out until data is loaded (tokensInPresale > 0)
+    if (tokensInPresale > 0 && deci(totalTokensSold).gte(tokensInPresale)) {
+      return presaleStates.SOLD_OUT;
     }
 
     if (curTime < startTime) {
       return presaleStates.IN_FUTURE;
     } else if (curTime >= startTime && curTime < endTime) {
       return presaleStates.RUNNING;
+    } else if (totalTime === 0) {
+      // Data not loaded yet
+      return presaleStates.IN_FUTURE;
     } else {
       return presaleStates.EXPIRED;
     }
@@ -234,8 +246,9 @@ function Swap() {
 
   const fetchDetails = async () => {
     try {
-      if (!presaleContract) return;
-      syncPresaleDetails(presaleContract);
+      const contractToUse = presaleContract || readOnlyPresaleContract;
+      if (!contractToUse) return;
+      syncPresaleDetails(contractToUse);
     } catch (error) {
       console.log(error);
     }
@@ -435,7 +448,7 @@ function Swap() {
     }
   };
 
-  const updateProgressBar = () => {
+  const updateProgressBar = useCallback(() => {
     const currentTime = Math.floor(new Date().getTime() / 1000);
     let remainingTime = 0;
     let _saleState = getSaleState();
@@ -464,25 +477,81 @@ function Swap() {
         seconds,
       });
     }
-  };
-
-  function startCountdown() {
-    timerRef.current = setInterval(() => {
-      updateProgressBar();
-    }, 1000);
-  }
+  }, [startDate, endDate, totalTime, totalTokensSold, tokensInPresale, t]);
 
   // THIS IS THE KEY FUNCTION - Direct wallet access with RainbowKit
-  const watchAsset = async () => {
-    if (!isConnected) {
-      Swal.fire(t("connect_wallet_first"), "", "warning");
+  // const watchAsset = async () => {
+  //   if (!isConnected) {
+  //     Swal.fire(t("connect_wallet_first"), "", "warning");
+  //     return;
+  //   }
+    
+  //   try {
+  //     // RainbowKit gives us direct access to the wallet's provider
+  //     // This works perfectly on mobile because it uses native wallet apps
+  //     const provider = await walletClient.request({
+  //       method: "wallet_watchAsset",
+  //       params: {
+  //         type: "ERC20",
+  //         options: {
+  //           address: tokenAddress,
+  //           symbol: token.symbol,
+  //           decimals: token.decimals,
+  //           image: token.image,
+  //         },
+  //       },
+  //     });
+      
+  //     if (provider) {
+  //       Swal.fire(t("token_imported"), "", "success");
+  //     } else {
+  //       Swal.fire(t("token_already_in_wallet") || "Token already in wallet", "", "info");
+  //     }
+  //   } catch (error) {
+  //     console.log("watchAsset error:", error);
+  //     const errorMessage = error?.message?.toLowerCase() || "";
+      
+  //     if (errorMessage.includes("already") || errorMessage.includes("exist") || errorMessage.includes("added")) {
+  //       Swal.fire(t("token_already_in_wallet") || "Token already in wallet", "", "info");
+  //     } else if (errorMessage.includes("user rejected") || errorMessage.includes("user denied")) {
+  //       // User cancelled - do nothing
+  //       return;
+  //     } else {
+  //       // Show manual import as fallback
+  //       Swal.fire({
+  //         title: t("manual_import_required") || "Add Token Manually",
+  //         html: `
+  //           <div style="text-align: left; font-size: 14px;">
+  //             <p style="margin-bottom: 10px;">Copy the token address and add it in your wallet:</p>
+  //             <div style="margin: 10px 0;">
+  //               <p style="margin: 5px 0; font-weight: bold;">Contract Address:</p>
+  //               <p style="word-break: break-all; background: #f5f5f5; padding: 8px; border-radius: 4px; margin: 5px 0; font-family: monospace;">${tokenAddress}</p>
+  //             </div>
+  //             <p style="margin: 5px 0;"><strong>Symbol:</strong> ${token.symbol}</p>
+  //             <p style="margin: 5px 0;"><strong>Decimals:</strong> ${token.decimals}</p>
+  //           </div>
+  //         `,
+  //         icon: "info",
+  //         confirmButtonText: "Copy Address",
+  //         showCancelButton: true,
+  //         cancelButtonText: "Close"
+  //       }).then((result) => {
+  //         if (result.isConfirmed) {
+  //           copyToClipboard(tokenAddress);
+  //           toast.success(t("copied"));
+  //         }
+  //       });
+  //     }
+  //   }
+  // };
+
+  const handleWatchAsset = async () => {
+    if (!connectorClient) {
+      toast.error("Please connect your wallet first");
       return;
     }
-    
     try {
-      // RainbowKit gives us direct access to the wallet's provider
-      // This works perfectly on mobile because it uses native wallet apps
-      const provider = await walletClient.request({
+      const provider = await connectorClient.request({
         method: "wallet_watchAsset",
         params: {
           type: "ERC20",
@@ -536,20 +605,26 @@ function Swap() {
         });
       }
     }
-  };
+  }
 
   useEffect(() => {
     if (isConnected && walletClient && saleTokenContract) {
       fetchSaleTokenBalance();
     }
   }, [isConnected, walletClient, saleTokenContract]);
-
+  
   useEffect(() => {
-    startCountdown();
+    // Run immediately on mount and when dependencies change
+    updateProgressBar();
+    
+    const intervalId = setInterval(() => {
+      updateProgressBar();
+    }, 1000);
+    
     return () => {
-      clearInterval(timerRef.current);
+      clearInterval(intervalId);
     };
-  }, [totalTime, startDate, endDate]);
+  }, [updateProgressBar]);
 
   useEffect(() => {
     let cal = async () => {
@@ -560,8 +635,9 @@ function Swap() {
           return;
         }
         let parsedAmount = deci(amount).mul(10 ** 18);
-        if (!presaleContract) return;
-        let numberOfToken = await presaleContract.bnbBuyHelper(
+        const contractToUse = presaleContract || readOnlyPresaleContract;
+        if (!contractToUse) return;
+        let numberOfToken = await contractToUse.bnbBuyHelper(
           parsedAmount.toFixed(0)
         );
         let amountReceivable = dividor(numberOfToken, 10 ** 18)
@@ -573,7 +649,7 @@ function Swap() {
       }
     };
     cal();
-  }, [amountBnbPay, bnbSelected, presaleContract]);
+  }, [amountBnbPay, bnbSelected, presaleContract, readOnlyPresaleContract]);
 
   useEffect(() => {
     let cal = async () => {
@@ -589,8 +665,9 @@ function Swap() {
           .toFixed(0)
           .toString();
 
-        if (!presaleContract) return;
-        let numberOfToken = await presaleContract.calculateToken(amount);
+        const contractToUse = presaleContract || readOnlyPresaleContract;
+        if (!contractToUse) return;
+        let numberOfToken = await contractToUse.calculateToken(amount);
         setAmountTokenReceivedUsdt(
           dividor(numberOfToken, 10 ** 18)
             .toFixed(2)
@@ -601,11 +678,13 @@ function Swap() {
       }
     };
     cal();
-  }, [amountUsdtPay, presaleContract]);
+  }, [amountUsdtPay, presaleContract, readOnlyPresaleContract]);
 
+  // Sync presale details when wallet connects (presaleContract becomes available)
   useEffect(() => {
-    if (!presaleContract) return;
-    fetchDetails();
+    if (presaleContract) {
+      syncPresaleDetails(presaleContract);
+    }
   }, [presaleContract]);
 
   useEffect(() => {
@@ -622,6 +701,9 @@ function Swap() {
     setSaleStateText(getSaleStateTextForTimer(saleState));
   }, [saleState,isConnected]);
 
+  useEffect(()=>{
+    getInitialValues();
+  },[]);
   return (
     <main>
       <section className="flex items-center justify-center w-full ">
@@ -830,9 +912,9 @@ function Swap() {
                 </div>
               </form>
               <div className="w-[95%] mt-2 mb-2 flex justify-center">
-                      {/* <ConnectButton /> */}
+                      <ConnectButton />
                       {/* <ConnectButton/> */}
-                      <appkit-button />
+                      {/* <appkit-button /> */}
               </div>
               <div className="w-full 3xl:max-w-[450px] md:translate-x-2 max-w-[400px] mt-1 lg:px-0 px-3">
                 <div className="flex flex-col">
@@ -850,7 +932,7 @@ function Swap() {
                         copyToClipboard(tokenAddress);
                         toast.success(t("copied"));
                       }}
-                      className="text-white cursor-pointer hover:text-gray-300 transition-colors bottom-2 relative"
+                      className="text-white cursor-pointer hover:text-gray-300 transition-colors relative"
                       title="Copy Contract Address"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -859,7 +941,7 @@ function Swap() {
                     </button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mt-1">
                   <p className="text-white 3xl:text-lg text-xs ">
                     Presale Address:
                   </p>
@@ -873,7 +955,7 @@ function Swap() {
                         copyToClipboard(presaleAddress);
                         toast.success(t("copied"));
                       }}
-                      className="text-white cursor-pointer  bottom-2 relative hover:text-gray-300 transition-colors"
+                      className="text-white cursor-pointer relative hover:text-gray-300 transition-colors"
                       title="Copy Presale Address"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -899,8 +981,8 @@ function Swap() {
             />
             <button
               type="button"
-              onClick={watchAsset}
-              className="bottom-10 3xl:w-[142px] w-[100px] absolute cursor-pointer 3xl:right-20 lg:right-40 right-28 md:left-auto md:translate-x-0 left-1/2 -translate-x-1/2 3xl:text-base text-xs font-bold md:py-1.5 py-1 3xl:h-[34px] bg-white rounded-lg text-black hover:bg-gray-200 transition-all duration-200"
+              onClick={handleWatchAsset}
+              className="bottom-8 3xl:w-[142px] w-[100px] absolute cursor-pointer 3xl:right-20 lg:right-40 right-28 md:left-auto md:translate-x-0 left-1/2 -translate-x-1/2 3xl:text-base text-xs font-bold md:py-1.5 py-1 3xl:h-[34px] bg-white rounded-lg text-black hover:bg-gray-200 transition-all duration-200"
             >
               + Add Token
             </button>
