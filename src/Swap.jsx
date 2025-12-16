@@ -1,7 +1,4 @@
-/** @format */
-
 import React, { useEffect, useState, useCallback } from "react";
-// import Big from "big.js";
 import Swal from "sweetalert2";
 import "./Swap.css";
 import { useConnection, useWalletClient, usePublicClient } from 'wagmi';
@@ -32,12 +29,9 @@ import clsx from "clsx";
 import { ConnectButton } from "./ConnectButton";
 import { useWallets } from "@privy-io/react-auth";
 
-// import { ConnectButton } from "@rainbow-me/rainbowkit";
-// import { AppKitButton, AppKitConnectButton } from "@reown/appkit/react";
 function Swap() {
   const { t } = useTranslation();
   
-  // RainbowKit/Wagmi hooks
   const { address, isConnected, chain: currentChain } = useConnection();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
@@ -89,7 +83,6 @@ function Swap() {
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [soldPercent, setSoldPercentage] = useState(0);
   
-  // Privy wallet hook - this gives us access to the actual wallet provider
   const { wallets } = useWallets();
 
   const syncPresaleDetails = async (_presaleContract) => {
@@ -163,11 +156,9 @@ function Swap() {
     try {
       if (!isConnected ) return;
       
-      // Get BNB balance
       const balance = await publicClient.getBalance({ address });
       setBNBBalance(balance);
       const connectedWallet = wallets.find(w => w.address?.toLowerCase() === address?.toLowerCase());
-      // Create ethers provider from wagmi
       const privyProvider = await connectedWallet.getEthereumProvider();
       const provider = new ethers.BrowserProvider(privyProvider);
       const signer = await provider.getSigner();
@@ -228,7 +219,6 @@ function Swap() {
     let startTime = startDate.getTime();
     let endTime = endDate.getTime();
 
-    // Don't check sold out until data is loaded (tokensInPresale > 0)
     if (tokensInPresale > 0 && deci(totalTokensSold).gte(tokensInPresale)) {
       return presaleStates.SOLD_OUT;
     }
@@ -238,7 +228,6 @@ function Swap() {
     } else if (curTime >= startTime && curTime < endTime) {
       return presaleStates.RUNNING;
     } else if (totalTime === 0) {
-      // Data not loaded yet
       return presaleStates.IN_FUTURE;
     } else {
       return presaleStates.EXPIRED;
@@ -273,9 +262,11 @@ function Swap() {
       const contractToUse = _saleTokenContract || saleTokenContract;
       if (!contractToUse) return;
       let balance = deciB(await contractToUse.balanceOf(address));
+
+      balance = BigInt(Math.floor(balance))
       setUserBalance({
         ...userBalance,
-        tokenForSale: ethers.formatEther(balance.toString()),
+        tokenForSale: ethers.formatEther(balance),
       });
     } catch (error) {
       console.log(error);
@@ -480,7 +471,6 @@ function Swap() {
     }
   }, [startDate, endDate, totalTime, totalTokensSold, tokensInPresale, t]);
 
-  // THIS IS THE KEY FUNCTION - Direct wallet access with RainbowKit
   // const watchAsset = async () => {
   //   if (!isConnected) {
   //     Swal.fire(t("connect_wallet_first"), "", "warning");
@@ -578,7 +568,6 @@ function Swap() {
       return;
     }
     
-    // Get the connected wallet from Privy
     const connectedWallet = wallets.find(w => w.address?.toLowerCase() === address?.toLowerCase());
     console.log("Privy wallets:", wallets, "Connected wallet:", connectedWallet, "address:", address);
     
@@ -589,7 +578,6 @@ function Swap() {
     }
     
     try {
-      // Get the provider from the Privy wallet
       const provider = await connectedWallet.getEthereumProvider();
       
       if (!provider) {
@@ -598,7 +586,6 @@ function Swap() {
         return;
       }
       
-      // Now add the token
       try {
         const result = await provider.request({
           method: "wallet_watchAsset",
@@ -616,19 +603,16 @@ function Swap() {
         if (result) {
           Swal.fire(t("token_imported") || "Token added successfully!", "", "success");
         }
-        // If result is false, user cancelled - don't show anything
       } catch (watchError) {
         console.log("watchAsset error:", watchError);
         const errorMessage = (watchError?.message || watchError?.toString() || "").toLowerCase();
         
-        // Handle timeout and "request in progress" errors - show manual import
         if (errorMessage.includes("timeout") || errorMessage.includes("in progress")) {
           console.log("Wallet request timeout or in progress, showing manual import");
           showManualImportDialog();
         } else if (errorMessage.includes("already") || errorMessage.includes("exist")) {
           Swal.fire(t("token_already_in_wallet") || "Token already in wallet", "", "info");
         } else if (errorMessage.includes("user rejected") || errorMessage.includes("user denied") || errorMessage.includes("cancelled")) {
-          // User cancelled - do nothing
           return;
         } else {
           showManualImportDialog();
@@ -647,7 +631,6 @@ function Swap() {
   }, [isConnected, walletClient, saleTokenContract]);
   
   useEffect(() => {
-    // Run immediately on mount and when dependencies change
     updateProgressBar();
     
     const intervalId = setInterval(() => {
@@ -713,7 +696,6 @@ function Swap() {
     cal();
   }, [amountUsdtPay, presaleContract, readOnlyPresaleContract]);
 
-  // Sync presale details when wallet connects (presaleContract becomes available)
   useEffect(() => {
     if (presaleContract) {
       syncPresaleDetails(presaleContract);
@@ -737,6 +719,7 @@ function Swap() {
   useEffect(()=>{
     getInitialValues();
   },[]);
+
   return (
     <main>
       <section className="flex items-center justify-center w-full ">
@@ -808,7 +791,7 @@ function Swap() {
                     {" "}
                     {t("your_holding")}
                   </span>
-                    <span className="text-white text-[12px]">{userBalance.tokenForSale.toString()} {token.symbol}</span>
+                    <span className="text-white text-[12px]">{parseFloat(userBalance.tokenForSale).toFixed(4)} {token.symbol}</span>
                 </li>
               </ul>
 
@@ -945,9 +928,7 @@ function Swap() {
                 </div>
               </form>
               <div className="w-[95%] mt-2 mb-2 flex justify-center">
-                      <ConnectButton />
-                      {/* <ConnectButton/> */}
-                      {/* <appkit-button /> */}
+                <ConnectButton />
               </div>
               <div className="w-full 3xl:max-w-[450px] md:translate-x-2 max-w-[400px] mt-1 lg:px-0 px-3">
                 <div className="flex flex-col">
